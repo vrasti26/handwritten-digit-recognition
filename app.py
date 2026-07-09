@@ -1,13 +1,12 @@
 import streamlit as st
 import tensorflow as tf
-import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
-# 1. Apne trained model ko load karein
+# 1. Model load karne ka function
 @st.cache_resource
 def load_my_model():
-    return tf.keras.models.load_model('handwritten_digit_model.h5') 
+    return tf.keras.models.load_model('handwritten_digit_model.h5')
 
 model = load_my_model()
 
@@ -16,31 +15,32 @@ st.title("✍️ Handwritten Character Recognition")
 st.write("Apni handwritten image upload karein aur AI use recognize karega!")
 
 # Image upload karne ka button
-uploaded_file = st.file_uploader("Image chuniye...", type=["png", "jpg", "jpeg", "webp"])
+uploaded_file = st.file_uploader("Image chuniye...", type=["png", "jpg", "jpeg"])
 
 if uploaded_file is not None:
-    # Image ko screen par dikhane ke liye
+    # Step A: Pehle original image ko open karo
     image = Image.open(uploaded_file)
-    st.image(image, caption='Uploaded Image', use_column_width=True)
+    
+    # Step B: Copy ki photo ka white background black karne ke liye preprocessing
+    image_gray = image.convert('L')          # Grayscale mein convert kiya
+    image_inverted = ImageOps.invert(image_gray) # Colors ulte kiye (White -> Black)
+    
+    # Step C: Screen par processed image dikhane ke liye (clean UI, no warnings)
+    st.image(image_inverted, caption='Processed Image (MNIST Format)', use_container_width=True)
     st.write("Predicting...")
-
-    # 3. Image ko RGB me convert karein (Taaki channels wala error na aaye)
-    rgb_image = image.convert('RGB')
-
-    # 4. Ab converted image ko numpy array me badlein
-    img_array = np.array(rgb_image)
     
-    # 5. OpenCV se grayscale karein
-    gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+    # Step D: CNN Model ke liye image ko resize aur 4D shape (1, 28, 28, 1) mein convert karna
+    img_resized = image_inverted.resize((28, 28))
+    img_array = np.array(img_resized) / 255.0  # Normalization
     
-    # 6. Image ko resize aur normalize karein (Jaise training ke waqt kiya tha)
-    resized = cv2.resize(gray, (28, 28))
-    normalized = resized / 255.0
-    reshaped = np.reshape(normalized, (1, 28, 28, 1))
+    img_reshaped = np.expand_dims(img_array, axis=0)     # Batch dimension add kiya (1, 28, 28)
+    img_reshaped = np.expand_dims(img_reshaped, axis=-1) # Channel dimension add kiya (1, 28, 28, 1)
     
-    # 7. Model se predict karwayein
-    prediction = model.predict(reshaped)
-    result = np.argmax(prediction) # Jo highest probability hai use chunna
+    # Step E: Model se prediction lena
+    prediction = model.predict(img_reshaped)
+    predicted_class = np.argmax(prediction)
+    confidence = np.max(prediction) * 100
     
-    # Output ko screen par dikhayein
-    st.success(f"🎯 AI Prediction: **{result}**")
+    # Step F: Output screen par dikhana
+    st.success(f"🤖 AI Prediction: {predicted_class}")
+    st.write(f"Confidence: {confidence:.2f}%")
